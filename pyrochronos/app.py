@@ -30,6 +30,7 @@ from pyro.processing import (
 )
 from utils.dashboard_theme import (
     PALETTE,
+    animate_favicon,
     inject_theme,
     render_hero,
     render_kpis,
@@ -47,6 +48,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 inject_theme()
+animate_favicon()
 
 SENSOR_COLORS = {"MODIS": "#FFB547", "VIIRS": "#FF6B35"}
 SEVERITY_COLORS = {
@@ -562,7 +564,11 @@ def render_overview(
         priority_signals()
 
 
-def render_prediction_model(top_of_page: bool = False) -> None:
+def render_prediction_model(
+    region_shapes: list,
+    region_names: list[str],
+    top_of_page: bool = False,
+) -> None:
     """Generate next-day hotspot predictions from the separate training dataset."""
     if not top_of_page:
         st.divider()
@@ -620,21 +626,159 @@ def render_prediction_model(top_of_page: bool = False) -> None:
         st.info("No hotspot predictions are available for the latest observation date.")
     else:
         forecast_for = forecasts["forecast_for"].iloc[0]
-        section_heading(
-            f"Highest-risk grid cells · {forecast_for}",
-            "Estimated likelihood of a detected hotspot",
-        )
-        display = forecasts[
-            ["cell_lat", "cell_lon", "probability"]
-        ].head(20).rename(columns={
-            "cell_lat": "Grid latitude",
-            "cell_lon": "Grid longitude",
-            "probability": "Predicted probability",
+        regional_points = forecasts[["cell_lat", "cell_lon", "probability"]].copy()
+        regional_points = regional_points.rename(columns={
+            "cell_lat": "latitude",
+            "cell_lon": "longitude",
         })
-        display["Predicted probability"] = display["Predicted probability"].map(
-            "{:.1%}".format
+        regional_points["region"] = pd.NA
+        for shape, name in zip(region_shapes, region_names):
+            in_region = regional_points["region"].isna() & aoi.inside(regional_points, shape)
+            regional_points.loc[in_region, "region"] = name
+
+        regional_points = regional_points.dropna(subset=["region"])
+        if regional_points.empty:
+            st.info("No forecast grid cells fall within the loaded Ghana regions.")
+            return
+
+        regional_summary = (
+            regional_points.groupby("region", as_index=False)
+            .agg(
+                mean_probability=("probability", "mean"),
+                peak_probability=("probability", "max"),
+                forecast_cells=("probability", "size"),
+                elevated_cells=("probability", lambda values: int((values >= 0.5).sum())),
+            )
         )
-        st.dataframe(display, width="stretch", hide_index=True)
+        regional_summary = regional_summary.sort_values(
+            "mean_probability", ascending=False
+        )
+        highest_region = regional_summary.iloc[0]
+        elevated_count = int(regional_summary["elevated_cells"].sum())
+        render_kpis([
+            {
+                "label": "Forecast date",
+                "value": pd.Timestamp(forecast_for).strftime("%d %b %Y"),
+                "detail": "Next calendar day",
+                "accent": "#FFB547",
+            },
+            {
+                "label": "Highest regional likelihood",
+                "value": f"{highest_region['mean_probability']:.1%}",
+                "detail": str(highest_region["region"]),
+                "accent": "#FF4545",
+            },
+            {
+                "label": "Elevated-likelihood cells",
+                "value": f"{elevated_count:,}",
+                "detail": "Estimated likelihood ≥ 50%",
+                "accent": "#FF6B35",
+            },
+            {
+                "label": "Regions with predictions",
+                "value": f"{len(regional_summary):,}",
+                "detail": f"{len(region_names)} Ghana regions available",
+                "accent": "#60A5FA",
+            },
+        ])
+
+        section_heading(
+            "Predicted hotspot likelihood by region",
+            "Mean estimated likelihood across forecast grid cells assigned to each Ghana region.",
+        )
+        regional_col, elevated_col = st.columns(2, gap="medium")
+        with regional_col:
+            regional_chart = go.Figure(go.Bar(
+                x=regional_summary["mean_probability"],
+                y=regional_summary["region"],
+                orientation="h",
+                marker={
+                    "color": regional_summary["mean_probability"],
+                    "colorscale": [[0, "#24415F"], [0.5, "#FFB547"], [1, "#FF4545"]],
+                    "cmin": 0,
+                    "cmax": 1,
+                },
+                customdata=np.column_stack([
+                    regional_summary["forecast_cells"],
+                    regional_summary["peak_probability"],
+                ]),
+                hovertemplate=(
+                    "%{y}<br>Mean estimated likelihood: %{x:.1%}"
+                    "<br>Highest cell likelihood: %{customdata[1]:.1%}"
+                    "<br>Forecast cells: %{customdata[0]}<extra></extra>"
+                ),
+            ))
+            style_chart(regional_chart, max(340, 32 * len(regional_summary) + 60))
+            regional_chart.update_layout(
+                xaxis_title="Mean estimated likelihood",
+                xaxis={"tickformat": ".0%", "range": [0, 1]},
+                yaxis_title=None,
+                showlegend=False,
+                margin={"l": 8, "r": 14, "t": 12, "b": 32},
+            )
+            st.plotly_chart(
+                regional_chart,
+                width="stretch",
+                config={"displayModeBar": False},
+                key="hotspot_forecast_regions",
+            )
+
+        with elevated_col:
+            section_heading("Elevated-likelihood cells by region", "Cells with estimated likelihood ≥ 50%")
+            elevated_regions = regional_summary.sort_values(
+                "elevated_cells", ascending=True
+            )
+            elevated_chart = go.Figure(go.Bar(
+                x=elevated_regions["elevated_cells"],
+                y=elevated_regions["region"],
+                orientation="h",
+                marker_color="#FF6B35",
+                customdata=elevated_regions[["forecast_cells", "mean_probability"]],
+                hovertemplate=(
+                    "%{y}<br>Elevated cells: %{x:,}"
+                    "<br>Forecast cells: %{customdata[0]:,}"
+                    "<br>Mean likelihood: %{customdata[1]:.1%}<extra></extra>"
+                ),
+            ))
+            style_chart(elevated_chart, max(340, 32 * len(regional_summary) + 60))
+            elevated_chart.update_layout(
+                xaxis_title="Grid cells",
+                yaxis_title=None,
+                showlegend=False,
+                margin={"l": 8, "r": 14, "t": 12, "b": 32},
+            )
+            st.plotly_chart(
+                elevated_chart,
+                width="stretch",
+                config={"displayModeBar": False},
+                key="hotspot_forecast_elevated_regions",
+            )
+
+        section_heading(
+            "Likelihood distribution",
+            "Forecast cells inside Ghana regions, grouped by estimated likelihood.",
+        )
+        distribution = go.Figure(go.Histogram(
+            x=regional_points["probability"],
+            xbins={"start": 0, "end": 1, "size": 0.05},
+            marker={"color": "#FF6B35", "line": {"color": "#FFB547", "width": 0.6}},
+            hovertemplate="Likelihood range: %{x}<br>Grid cells: %{y}<extra></extra>",
+        ))
+        style_chart(distribution, 270)
+        distribution.update_layout(
+            xaxis_title="Estimated likelihood",
+            xaxis={"tickformat": ".0%", "range": [0, 1]},
+            yaxis_title="Grid cells",
+            bargap=0.12,
+            showlegend=False,
+            margin={"l": 8, "r": 8, "t": 16, "b": 32},
+        )
+        st.plotly_chart(
+            distribution,
+            width="stretch",
+            config={"displayModeBar": False},
+            key="hotspot_forecast_distribution",
+        )
     st.caption(
         "Predictions are estimates based on historical hotspot patterns, not confirmed fires "
         "or official warnings. Weather, vegetation, and land cover are not included."
@@ -1110,8 +1254,8 @@ def main() -> None:
         )
         st.info("No FIRMS detections are loaded. Add source data in Data Explorer to begin.")
         render_data_manager()
-        if page == PAGE_ALERTS:  # prediction uses data/training, not the display data
-            render_prediction_model()
+        if page == PAGE_ALERTS:
+            render_prediction_model(region_shapes, region_names)
         return
 
     if filtered_raw["source_file"].str.startswith(DEMO_PREFIX).any():
@@ -1129,8 +1273,8 @@ def main() -> None:
         st.info("The selected filters returned no observations.")
         if page == PAGE_DATA:
             render_data_manager()
-        elif page == PAGE_ALERTS:  # prediction uses data/training, not the filters
-            render_prediction_model()
+        elif page == PAGE_ALERTS:
+            render_prediction_model(region_shapes, region_names)
         return
 
     period_label = f"{start_date:%d %b} – {end_date:%d %b %Y}"
@@ -1183,7 +1327,7 @@ def main() -> None:
             "Hotspot prediction · response queue",
         )
         # Show predictions first because the notification links to this section.
-        render_prediction_model(top_of_page=True)
+        render_prediction_model(region_shapes, region_names, top_of_page=True)
         st.divider()
         section_heading("Rule-based alerts", "Signals derived from observed FIRMS detections")
         render_alerts(
