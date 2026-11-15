@@ -1,0 +1,8 @@
+[theme]
+# Dark base so Streamlit's own widgets (tables, dropdowns, expanders) match the
+# dark dashboard instead of drawing white light-theme backgrounds.
+base = "dark"
+primaryColor = "#FF6B35"
+backgroundColor = "#080D18"
+secondaryBackgroundColor = "#151F30"
+textColor = "#F1F5F9"
