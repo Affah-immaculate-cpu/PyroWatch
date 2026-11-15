@@ -19,9 +19,12 @@ if training_data.empty:
 
 cell_days = make_cell_days(training_data)
 model, metrics, info = train_and_evaluate(cell_days)
+latest_day = cell_days["date"].max()
+latest_features = cell_days[cell_days["date"] == latest_day].copy()
 MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 artifact = {
+    "artifact_version": 1,
     "model": model,
     "features": FEATURES,
     "cell_size_degrees": 0.25,
@@ -30,6 +33,7 @@ artifact = {
     "training_observations": len(training_data),
     "training_dates": int(training_data["date"].nunique()),
     "training_fingerprint": training_fingerprint(),
+    "latest_cell_days": latest_features,
     "evaluation": metrics,
     "evaluation_info": info,
 }

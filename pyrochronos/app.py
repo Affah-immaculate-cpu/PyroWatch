@@ -3,11 +3,13 @@
 from datetime import date, datetime, timedelta
 from html import escape
 import math
+import pickle
 import re
 from pathlib import Path
 
 import folium
 from folium.plugins import HeatMap, MarkerCluster
+import joblib
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -18,15 +20,13 @@ from streamlit_folium import st_folium
 from pyro import aoi, places
 from pyro.firms_api import AREAS
 from pyro.insights import build_alerts, calendar_matrix, daily_summary
-from pyro.prediction import make_cell_days, predict_next_day, train_and_evaluate
+from pyro.prediction import predict_next_day
 from pyro.processing import (
     DEMO_PREFIX,
     data_fingerprint,
     harmonize,
     list_raw_files,
     load_raw_hotspots,
-    load_training_hotspots,
-    training_fingerprint,
 )
 from utils.dashboard_theme import (
     PALETTE,
@@ -94,9 +94,12 @@ def load_data(max_km: float, max_hours: float, files: tuple):
     return harmonize(raw, max_km=max_km, max_hours=max_hours)
 
 
-@st.cache_data(show_spinner="Reading model training observations…")
-def load_training_data(files: tuple):
-    return load_training_hotspots()
+MODEL_PATH = Path(__file__).resolve().parent / "models" / "hotspot_model.joblib"
+
+
+@st.cache_resource(show_spinner="Loading saved hotspot model…")
+def load_hotspot_model(path: str, modified: int, size: int):
+    return joblib.load(path)
 
 
 @st.cache_data(show_spinner="Reading Ghana administrative boundaries…")
@@ -575,56 +578,61 @@ def render_prediction_model(
         st.divider()
     section_heading(
         "Next-Day Hotspot Forecast",
-        "Predicted likelihood by grid cell for the day after the latest available observations.",
+        "Predicted likelihood by Ghana region from the latest saved model.",
     )
-    try:
-        training_raw = load_training_data(training_fingerprint())
-    except (
-        ValueError,
-        pd.errors.EmptyDataError,
-        pd.errors.ParserError,
-        UnicodeDecodeError,
-    ) as err:
-        st.error(f"Could not load the model training CSVs: {err}")
-        return
-
-    if training_raw.empty:
+    if not MODEL_PATH.is_file():
         st.info(
-            "Predictions are unavailable. Add FIRMS archive CSVs to "
-            "`data/training/modis/` or `data/training/viirs/`."
+            "No saved prediction model is available. Train it locally with "
+            "`python scripts/train_hotspot_model.py`, then include "
+            "`models/hotspot_model.joblib` in the deployment."
         )
         return
 
-    date_count = training_raw["date"].nunique()
-    if date_count < 10:
-        st.info("Predictions require at least 10 distinct observation dates.")
-        return
+    model_stat = MODEL_PATH.stat()
+    model_key = (model_stat.st_mtime_ns, model_stat.st_size)
 
     if st.button(
-        "Generate next-day predictions",
+        "Show next-day predictions",
         type="primary",
-        key="train_hotspot_model",
+        key="show_hotspot_model_predictions",
     ):
         try:
-            cell_days = make_cell_days(training_raw)
-            model, _, _ = train_and_evaluate(cell_days)
-            latest_day = cell_days["date"].max()
-            forecasts = predict_next_day(model, cell_days, latest_day)
-        except ValueError as err:
-            st.error(f"Model training could not be completed: {err}")
+            artifact = load_hotspot_model(str(MODEL_PATH), *model_key)
+            required_artifact_fields = {"model", "trained_through", "latest_cell_days"}
+            missing_fields = required_artifact_fields - set(artifact)
+            if missing_fields:
+                raise ValueError(
+                    "Saved model is missing forecast data. Retrain it with "
+                    "`python scripts/train_hotspot_model.py`."
+                )
+            forecasts = predict_next_day(
+                artifact["model"],
+                artifact["latest_cell_days"],
+                artifact["trained_through"],
+            )
+        except (
+            OSError,
+            EOFError,
+            pickle.UnpicklingError,
+            ValueError,
+            KeyError,
+            TypeError,
+        ) as err:
+            st.error(f"Could not generate predictions from the saved model: {err}")
         else:
             st.session_state["hotspot_model_result"] = {
-                "fingerprint": training_fingerprint(),
+                "model_key": model_key,
+                "trained_through": artifact["trained_through"],
                 "forecasts": forecasts,
             }
 
     result = st.session_state.get("hotspot_model_result")
-    if not result or result["fingerprint"] != training_fingerprint():
+    if not result or result["model_key"] != model_key:
         return
 
     forecasts = result["forecasts"]
     if forecasts.empty:
-        st.info("No hotspot predictions are available for the latest observation date.")
+        st.info("The saved model does not contain any latest-day forecast cells.")
     else:
         forecast_for = forecasts["forecast_for"].iloc[0]
         regional_points = forecasts[["cell_lat", "cell_lon", "probability"]].copy()
@@ -781,8 +789,10 @@ def render_prediction_model(
             key="hotspot_forecast_distribution",
         )
     st.caption(
-        "Predictions are estimates based on historical hotspot patterns, not confirmed fires "
-        "or official warnings. Weather, vegetation, and land cover are not included."
+        f"Forecast for {pd.Timestamp(forecast_for):%d %b %Y}, based on observations "
+        f"through {pd.Timestamp(result['trained_through']):%d %b %Y}. "
+        "These are estimates, not confirmed fires or official warnings; weather, "
+        "vegetation, and land cover are not included."
     )
 
 

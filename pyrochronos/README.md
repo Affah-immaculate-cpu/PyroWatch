@@ -82,9 +82,8 @@ Keep the datasets separate:
   their CSVs do not get added to dashboard maps, counts, or rule-based alerts.
 
 To generate predictions, add training CSVs to the matching `data/training/`
-sensor folder, open **Alert Management**, and select **Generate next-day
-predictions**. At least 10 distinct observation dates are required. The
-interface displays the prediction results, not the training records.
+sensor folder, then train the model. The CSVs stay local and are excluded from
+Git; only the compact model artifact is needed by the deployed prediction view.
 
 To train and save a reusable model artifact, run this command from the
 `pyrochronos` project folder:
@@ -94,10 +93,11 @@ python scripts/train_hotspot_model.py
 ```
 
 It saves the fitted estimator, feature settings, training date, and held-out
-evaluation metrics to `models/hotspot_model.joblib`. Rerun the command after
-adding newer training CSVs to refresh the saved model. The dashboard's prediction
-button still trains from the current training CSVs for its session; it does not
-load the saved artifact automatically.
+evaluation metrics plus the latest forecast features to
+`models/hotspot_model.joblib`. Rerun the command after adding newer training
+CSVs to refresh the saved model, then commit and push the updated artifact.
+The dashboard loads this artifact to generate predictions; it does not retrain
+or need the training CSVs at runtime.
 
 The data manager also supports uploading FIRMS CSV files and fetching observations
 through the FIRMS API. To enable API access, copy
@@ -120,9 +120,9 @@ ui_data.py                FIRMS upload, API download, and data management UI
 utils/dashboard_theme.py  Shared visual theme and dashboard components
 pyro/                     Processing, Ghana boundaries, alerts, FIRMS API, model
 data/raw/                 Source FIRMS CSV files (MODIS and VIIRS)
-data/training/            Separate FIRMS CSVs used to generate predictions
+data/training/            Local FIRMS training CSVs, excluded from Git
 data/processed/           Optional processed-data exports
-models/                   Saved model artifacts
+models/                   Saved model artifact used by the dashboard
 scripts/                  Data fetch, model training, demo generation, and processing
 ml/ models/ pages/        Extension points for project modules and pages
 ```
