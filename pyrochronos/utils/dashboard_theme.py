@@ -1,6 +1,10 @@
+import base64
+import json
 from html import escape
+from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 PALETTE = {
@@ -310,47 +314,70 @@ def inject_theme() -> None:
     )
 
 
+FLAME_ICON = Path(__file__).resolve().parents[1] / "assets" / "flame.png"
+
 _FLAME_FAVICON_JS = """
-<script>
 (() => {
-  // One animation per browser tab, even though Streamlit reruns this script.
+  // One animation per browser tab, even though Streamlit reruns the app script.
   if (window.__pcFlame) return;
-  const flame = (t) => {
-    const sway = 3.2 * Math.sin(t * 2.3) + 1.4 * Math.sin(t * 5.7);
-    const lift = 2.5 + 2.5 * Math.sin(t * 3.1) + 1.2 * Math.sin(t * 7.9);
-    const shape = (tx, ty, cy, r, l, b, fill) =>
-      `<path fill="${fill}" d="M${tx} ${ty} C${tx + r * .3} ${cy} ${32 + r} ${cy + 10} ${32 + r - 1} ${b - 18}`
-      + ` C${32 + r - 2} ${b - 5} ${32 + l} ${b} 32 ${b} C${32 - l} ${b} ${32 - r + 2} ${b - 5} ${32 - r + 1} ${b - 18}`
-      + ` C${32 - r} ${cy + 4} ${tx - r * .4} ${cy} ${tx} ${ty}Z"/>`;
-    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
-      + '<defs><linearGradient id="g" x1="0" y1="1" x2="0" y2="0">'
-      + '<stop offset="0" stop-color="#FF3D1F"/><stop offset="1" stop-color="#FF8A3D"/></linearGradient></defs>'
-      + shape(32 + sway, 2 + lift, 16, 20, 10, 62, 'url(#g)')
-      + shape(32 + sway * .75, 20 + lift * .8, 30, 13, 7, 60, '#FFB547')
-      + shape(32 + sway * .45, 35 + lift * .5, 42, 7, 4, 58, '#FFF1B8')
-      + '</svg>';
-    return 'data:image/svg+xml,' + encodeURIComponent(svg);
+  window.__pcFlame = true;
+  const img = new Image();
+  img.onload = () => {
+    const size = 64, canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const draw = (t, mirror, alpha, sx, sy, skew) => {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(size / 2, size);                 // anchor at the base of the flame
+      ctx.transform(sx * (mirror ? -1 : 1), 0, skew, sy, 0, 0);
+      ctx.drawImage(img, -29, -58, 58, 58);
+      ctx.restore();
+    };
+    const start = performance.now();
+    setInterval(() => {
+      const t = (performance.now() - start) / 1000;
+      const sy = 1 + 0.06 * Math.sin(t * 5.3) + 0.03 * Math.sin(t * 11.7);
+      const sx = 1 + 0.025 * Math.sin(t * 4.1 + 1);
+      const skew = 0.07 * Math.sin(t * 2.7) + 0.03 * Math.sin(t * 6.9);
+      ctx.clearRect(0, 0, size, size);
+      ctx.filter = `brightness(${1 + 0.12 * Math.sin(t * 9.1)}) saturate(1.1)`;
+      draw(t, false, 1, sx, sy, skew);
+      // A mirrored copy fading in and out makes the tongues of flame shift.
+      draw(t, true, 0.3 + 0.3 * Math.sin(t * 3.3), sx * 0.98, sy * 1.02, -skew);
+      const href = canvas.toDataURL('image/png');
+      let links = document.querySelectorAll('link[rel~="icon"]');
+      if (!links.length) {
+        const link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+        links = [link];
+      }
+      links.forEach((link) => { link.type = 'image/png'; link.href = href; });
+    }, 90);
   };
-  const start = performance.now();
-  window.__pcFlame = setInterval(() => {
-    const href = flame((performance.now() - start) / 1000);
-    let links = document.querySelectorAll('link[rel~="icon"]');
-    if (!links.length) {
-      const link = document.createElement('link');
-      link.rel = 'icon';
-      document.head.appendChild(link);
-      links = [link];
-    }
-    links.forEach((link) => { link.type = 'image/svg+xml'; link.href = href; });
-  }, 90);
+  img.src = '__FLAME_SRC__';
 })();
-</script>
 """
 
 
 def animate_favicon() -> None:
-    """Replace the static 🔥 tab icon with a continuously flickering SVG flame."""
-    st.html(_FLAME_FAVICON_JS, unsafe_allow_javascript=True)
+    """Make the browser-tab icon a continuously burning flame (assets/flame.png).
+
+    A zero-height component copies the animation script into the main page, so the
+    animation lives in the page itself and survives reruns and page switches.
+    """
+    if not FLAME_ICON.exists():
+        return
+    src = "data:image/png;base64," + base64.b64encode(FLAME_ICON.read_bytes()).decode()
+    code = json.dumps(_FLAME_FAVICON_JS.replace("__FLAME_SRC__", src))
+    components.html(
+        "<script>(() => { const doc = window.parent.document;"
+        " if (window.parent.__pcFlame) return;"
+        " const s = doc.createElement('script');"
+        f" s.textContent = {code}; doc.head.appendChild(s); }})();</script>",
+        height=0,
+    )
 
 
 def render_topbar(sync_label: str, connected: bool, alert_count: int,

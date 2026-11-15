@@ -30,6 +30,7 @@ from pyro.processing import (
 )
 from utils.dashboard_theme import (
     PALETTE,
+    FLAME_ICON,
     animate_favicon,
     inject_theme,
     render_hero,
@@ -43,7 +44,7 @@ from ui_data import render_data_manager
 
 st.set_page_config(
     page_title="PyroChronos | Wildfire Intelligence Center",
-    page_icon="🔥",
+    page_icon=str(FLAME_ICON) if FLAME_ICON.exists() else "🔥",
     layout="wide",
     initial_sidebar_state="expanded",
 )
