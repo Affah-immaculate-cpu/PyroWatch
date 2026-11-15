@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from pyro import firms_api
-from pyro.processing import DEMO_BACKUP_DIR, RAW_DIR, list_raw_files, move_demo_files, sensor_of_csv
+from pyro.processing import RAW_DIR, list_raw_files, move_demo_files, sensor_of_csv
 
 
 def _get_saved_key() -> str | None:
@@ -46,15 +46,12 @@ def render_data_manager():
         st.error("You're mixing **synthetic demo data** with real data. "
                  "Remove the demo files before presenting results.", icon="🚫")
 
-    c1, c2 = st.columns(2)
-    if has_demo and c1.button("🧹 Remove demo data", help="Moves demo CSVs to data/demo_backup/"):
+    if has_demo and st.button(
+        "🧹 Remove demo data",
+        help="Moves demo CSVs to data/demo_backup/",
+    ):
         n = move_demo_files(to_backup=True)
         st.toast(f"Moved {n} demo file(s) to data/demo_backup/")
-        _refresh()
-    backup_exists = any(DEMO_BACKUP_DIR.glob("*/*.csv"))
-    if not has_demo and backup_exists and c2.button("↩️ Restore demo data"):
-        n = move_demo_files(to_backup=False)
-        st.toast(f"Restored {n} demo file(s)")
         _refresh()
 
     st.divider()
@@ -90,7 +87,6 @@ def render_data_manager():
     st.subheader("Option 2 · Fetch from the FIRMS API")
     saved_key = _get_saved_key()
     if saved_key:
-        st.caption("✅ Using the MAP_KEY from `.streamlit/secrets.toml`.")
         map_key = saved_key
     else:
         map_key = st.text_input(
@@ -112,8 +108,7 @@ def render_data_manager():
         sources = st.multiselect(
             "Sources", list(firms_api.SOURCES),
             default=["VIIRS_SNPP_NRT", "VIIRS_NOAA20_NRT", "MODIS_NRT"],
-            help="NRT = recent weeks/months. SP = older, final archive. "
-                 "Use 'Check what dates are available' to see each source's range.")
+            help="NRT = recent weeks/months. SP = older, final archive.")
     with col_b:
         today = date.today()
         start = st.date_input("Start date", value=today - timedelta(days=14))
@@ -123,19 +118,11 @@ def render_data_manager():
         st.caption(f"{n_days} days × {len(sources)} source(s) ≈ {calls} API calls. "
                    "Each day counts against your key's limit (resets every 10 minutes).")
 
-    b1, b2, b3 = st.columns(3)
-    if b1.button("🔑 Check key", disabled=not map_key):
-        try:
-            st.json(firms_api.check_key(map_key))
-        except Exception as err:
-            st.error(f"Couldn't check key: {err}")
-    if b2.button("📆 Check what dates are available", disabled=not map_key):
-        try:
-            st.dataframe(firms_api.data_availability(map_key), hide_index=True)
-        except Exception as err:
-            st.error(f"Couldn't get availability: {err}")
-
-    if b3.button("⬇️ Fetch data", type="primary", disabled=not (map_key and sources and n_days)):
+    if st.button(
+        "⬇️ Fetch data",
+        type="primary",
+        disabled=not (map_key and sources and n_days),
+    ):
         progress = st.progress(0.0, text="Starting…")
         total_saved = 0
         for i, source in enumerate(sources):

@@ -15,7 +15,6 @@ Keep it secret: never put it in code that goes to GitHub.
 """
 
 import io
-import json
 import time
 from datetime import date, timedelta
 
@@ -53,23 +52,6 @@ def _get(url: str, timeout: int = 60) -> str:
     response = requests.get(url, timeout=timeout)
     response.raise_for_status()
     return response.text
-
-
-def check_key(map_key: str) -> dict:
-    """Ask FIRMS how many transactions this key has used (limit resets every 10 min)."""
-    text = _get(f"{BASE}/mapserver/mapkey_status/?MAP_KEY={map_key}", timeout=30)
-    try:
-        return json.loads(text)
-    except ValueError as err:
-        raise FirmsError(f"Unexpected reply when checking key: {text[:200]}") from err
-
-
-def data_availability(map_key: str) -> pd.DataFrame:
-    """Which date range each source currently covers."""
-    text = _get(f"{BASE}/api/data_availability/csv/{map_key}/ALL", timeout=30)
-    if "data_id" not in text.splitlines()[0]:
-        raise FirmsError(text.strip()[:200])
-    return pd.read_csv(io.StringIO(text))
 
 
 def fetch_chunk(map_key: str, source: str, bbox, start: date, days: int) -> pd.DataFrame:
