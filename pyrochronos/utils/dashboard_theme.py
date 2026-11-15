@@ -393,7 +393,7 @@ def render_topbar(sync_label: str, connected: bool, alert_count: int,
 
     with st.container(key="pc_topbar", horizontal=True, gap="small",
                       vertical_alignment="center"):
-        item('<div class="pc-item" style="--i:0"><span class="pc-brand-name">PyroChronos</span></div>')
+        item('<div class="pc-item" style="--i:0"><span class="pc-brand-name">PyroWatch</span></div>')
         item('<div class="pc-item pc-brand-sub" style="--i:1">'
              'EARTH OBSERVATION · WILDFIRE INTELLIGENCE</div>')
         item(f'<div class="pc-item pc-status pc-push" style="--i:2">'

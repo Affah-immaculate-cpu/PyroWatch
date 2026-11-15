@@ -1,6 +1,6 @@
-# PyroChronos — Wildfire Intelligence Center
+# PyroWatch — Wildfire Intelligence Center
 
-PyroChronos is a Streamlit dashboard for exploring NASA FIRMS MODIS and VIIRS
+PyroWatch is a Streamlit dashboard for exploring NASA FIRMS MODIS and VIIRS
 thermal-anomaly observations over Ghana and nearby areas. It combines a clustered
 geospatial map, transparent alert rules, historical summaries, and an experimental
 next-day model in a dark command-center interface.

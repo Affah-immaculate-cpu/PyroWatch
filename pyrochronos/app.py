@@ -1,4 +1,4 @@
-"""PyroChronos wildfire intelligence dashboard."""
+"""PyroWatch wildfire intelligence dashboard."""
 
 from datetime import date, datetime, timedelta
 from html import escape
@@ -43,7 +43,7 @@ from ui_data import render_data_manager
 
 
 st.set_page_config(
-    page_title="PyroChronos | Wildfire Intelligence Center",
+    page_title="PyroWatch | Wildfire Intelligence Center",
     page_icon=str(FLAME_ICON) if FLAME_ICON.exists() else "🔥",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -1010,7 +1010,7 @@ def render_data_explorer(raw: pd.DataFrame) -> None:
     st.download_button(
         "Download filtered observations",
         data=raw[columns].to_csv(index=False).encode("utf-8"),
-        file_name="pyrochronos_filtered_detections.csv",
+        file_name="pyrowatch_filtered_detections.csv",
         mime="text/csv",
     )
     st.dataframe(
@@ -1030,7 +1030,7 @@ def render_system_information(
 ) -> None:
     section_page(
         PAGE_SETTINGS,
-        "How PyroChronos processes FIRMS data for Ghana: active settings, method, "
+        "How PyroWatch processes FIRMS data for Ghana: active settings, method, "
         "data provenance and limitations.",
         "Configuration · technical reference",
     )
@@ -1109,7 +1109,7 @@ def main() -> None:
         # Keep sidebar navigation inside its styled container.
         with st.container(key="sidebar_nav"):
             st.markdown(
-                '<div class="pc-nav-brand">PyroChronos<span>Ghana wildfire intelligence</span>'
+                '<div class="pc-nav-brand">PyroWatch<span>Ghana wildfire intelligence</span>'
                 '</div><div class="pc-nav-label">NAVIGATION</div>',
                 unsafe_allow_html=True,
             )

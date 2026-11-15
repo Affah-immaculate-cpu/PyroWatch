@@ -1,4 +1,4 @@
-# PyroChronos
+# PyroWatch
 
 A Streamlit wildfire-intelligence dashboard for exploring NASA FIRMS MODIS and
 VIIRS thermal-anomaly observations over Ghana. It includes an interactive map,
