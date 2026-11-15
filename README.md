@@ -9,10 +9,10 @@ historical analysis, alert summaries, and an experimental next-day model.
 
 ## Run locally
 
-The Streamlit application and its full documentation are in [`pyrochronos/`](./pyrochronos/).
+The Streamlit application and its full documentation are in [`pyrowatch/`](./pyrowatch/).
 
 ```powershell
-Set-Location pyrochronos
+Set-Location pyrowatch
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -25,9 +25,9 @@ internet connection for map tiles are recommended.
 ## FIRMS API access
 
 To fetch data directly from NASA FIRMS, set `FIRMS_MAP_KEY` in
-`pyrochronos/.streamlit/secrets.toml`, or enter the key in the application.
+`pyrowatch/.streamlit/secrets.toml`, or enter the key in the application.
 Never commit `secrets.toml`; the project ignores it. A FIRMS key is not needed
 to display the basemaps or explore already-loaded data.
 
-See [`pyrochronos/README.md`](./pyrochronos/README.md) for dashboard sections,
+See [`pyrowatch/README.md`](./pyrowatch/README.md) for dashboard sections,
 data setup, and interpretation notes.

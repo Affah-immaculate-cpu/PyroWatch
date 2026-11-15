@@ -11,8 +11,8 @@ summaries, not official incident assessments.
 
 ## Run locally
 
-Open a terminal in this directory (`D:\PyroChronos\pyrochronos` on the current
-Windows installation), then create and activate a virtual environment:
+Open a terminal in this project directory, then create and activate a virtual
+environment:
 
 ```powershell
 python -m venv .venv
@@ -86,7 +86,7 @@ sensor folder, then train the model. The CSVs stay local and are excluded from
 Git; only the compact model artifact is needed by the deployed prediction view.
 
 To train and save a reusable model artifact, run this command from the
-`pyrochronos` project folder:
+`pyrowatch` project folder:
 
 ```powershell
 python scripts/train_hotspot_model.py
@@ -121,10 +121,9 @@ utils/dashboard_theme.py  Shared visual theme and dashboard components
 pyro/                     Processing, Ghana boundaries, alerts, FIRMS API, model
 data/raw/                 Source FIRMS CSV files (MODIS and VIIRS)
 data/training/            Local FIRMS training CSVs, excluded from Git
-data/processed/           Optional processed-data exports
+data/processed/           Optional exports, created when needed
 models/                   Saved model artifact used by the dashboard
 scripts/                  Data fetch, model training, demo generation, and processing
-ml/ models/ pages/        Extension points for project modules and pages
 ```
 
 ## Interpretation notes
@@ -149,7 +148,7 @@ ml/ models/ pages/        Extension points for project modules and pages
 
 **`ModuleNotFoundError: pyro`** — Run Streamlit from this project directory.
 
-**`requirements.txt` not found** — Change into `D:\PyroChronos\pyrochronos` before installing.
+**`requirements.txt` not found** — Change into this project directory before installing.
 
 **No observations are shown** — Check the CSVs in `data/raw/modis/` and `data/raw/viirs/`, then use Data Explorer to reload or fetch data.
 
