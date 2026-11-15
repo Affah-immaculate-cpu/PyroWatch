@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# --- Settings you can change -------------------------------------------------
+# Settings you can change
 SEED = 42                      # same seed -> same fake data every time
 START = "2025-11-01"           # West African dry season roughly Nov - Mar
 END = "2026-03-31"
@@ -22,8 +22,6 @@ N_FIRE_EVENTS = 260            # how many fake "fires" to invent
 # Rough West Africa bounding box (land-heavy part, south of the Sahara)
 LAT_MIN, LAT_MAX = 5.0, 14.0
 LON_MIN, LON_MAX = -16.0, 10.0
-# -----------------------------------------------------------------------------
-
 ROOT = Path(__file__).resolve().parents[1]
 MODIS_DIR = ROOT / "data" / "raw" / "modis"
 VIIRS_DIR = ROOT / "data" / "raw" / "viirs"

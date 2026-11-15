@@ -42,12 +42,12 @@ Use the collapsible sidebar navigation to switch between:
    is shown by default. Display basemaps do not require a key; a FIRMS MAP_KEY is
    only needed to fetch data from the FIRMS API.
 3. **Analytics & Insights** — daily sensor trends, FRP and confidence distributions,
-   transparent FRP severity bands, geographic concentration, and the experimental
-   next-day model.
+   transparent FRP severity bands, and geographic concentration.
 4. **Historical Analysis** — daily/weekly/monthly activity, acquisition-time
    patterns, and regional summaries for the selected date range.
-5. **Alert Management** — searchable, severity-filtered rule matches. Status changes
-   are held in the current Streamlit session; they are not sent as notifications.
+5. **Alert Management** — next-day hotspot predictions alongside searchable,
+   severity-filtered rule matches. Alert status changes are held in the current
+   Streamlit session; they are not sent as notifications.
 6. **Data Explorer** — manage FIRMS files and API downloads, inspect filtered records,
    and export the current selection as CSV.
 7. **System Information** — input-file and processing summaries plus interpretation
@@ -67,8 +67,24 @@ data/
 ├── raw/
 │   ├── modis/
 │   └── viirs/
+├── training/
+│   ├── modis/
+│   └── viirs/
 └── processed/
 ```
+
+Keep the datasets separate:
+
+- `data/raw/modis/` and `data/raw/viirs/` are for observations displayed in the
+  dashboard. The existing display CSVs stay here.
+- `data/training/modis/` and `data/training/viirs/` are for FIRMS-format CSVs
+  used to generate hotspot predictions. The model loader reads only these folders;
+  their CSVs do not get added to dashboard maps, counts, or rule-based alerts.
+
+To generate predictions, add training CSVs to the matching `data/training/`
+sensor folder, open **Alert Management**, and select **Generate next-day
+predictions**. At least 10 distinct observation dates are required. The
+interface displays the prediction results, not the training records.
 
 The data manager also supports uploading FIRMS CSV files and fetching observations
 through the FIRMS API. To enable API access, copy
@@ -91,6 +107,7 @@ ui_data.py                FIRMS upload, API download, and data management UI
 utils/dashboard_theme.py  Shared visual theme and dashboard components
 pyro/                     Processing, Ghana boundaries, alerts, FIRMS API, model
 data/raw/                 Source FIRMS CSV files (MODIS and VIIRS)
+data/training/            Separate FIRMS CSVs used to generate predictions
 data/processed/           Optional processed-data exports
 scripts/                  Data fetch, demo generation, and processing utilities
 ml/ models/ pages/        Extension points for project modules and pages
@@ -110,14 +127,16 @@ ml/ models/ pages/        Extension points for project modules and pages
   timing, and sensor coverage affect observations.
 - Alert rules summarize activity spikes, high FRP, and persistence. They do not
   dispatch alerts or replace emergency services.
-- The experimental next-day model uses prior detections and seasonality, not weather,
-  vegetation, or land cover. It is not an operational forecast.
+- Next-day hotspot predictions use prior detections and seasonality, not weather,
+  vegetation, or land cover. They are estimates, not official warnings or an
+  operational fire forecast.
 
 ## Troubleshooting
 
-| Problem | What to check |
-|---|---|
-| `ModuleNotFoundError: pyro` | Run Streamlit from this project directory. |
-| `requirements.txt` not found | Change into `D:\PyroChronos\pyrochronos` before installing. |
-| No observations are shown | Check the CSVs in `data/raw/modis/` and `data/raw/viirs/`, then use Data Explorer to reload or fetch data. |
-| Basemap tiles do not load | Check the internet connection; the map tiles are provided by external tile services. |
+**`ModuleNotFoundError: pyro`** — Run Streamlit from this project directory.
+
+**`requirements.txt` not found** — Change into `D:\PyroChronos\pyrochronos` before installing.
+
+**No observations are shown** — Check the CSVs in `data/raw/modis/` and `data/raw/viirs/`, then use Data Explorer to reload or fetch data.
+
+**Basemap tiles do not load** — Check the internet connection; the map tiles are provided by external tile services.

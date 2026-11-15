@@ -18,12 +18,15 @@ from streamlit_folium import st_folium
 from pyro import aoi, places
 from pyro.firms_api import AREAS
 from pyro.insights import build_alerts, calendar_matrix, daily_summary
+from pyro.prediction import make_cell_days, predict_next_day, train_and_evaluate
 from pyro.processing import (
     DEMO_PREFIX,
     data_fingerprint,
     harmonize,
     list_raw_files,
     load_raw_hotspots,
+    load_training_hotspots,
+    training_fingerprint,
 )
 from utils.dashboard_theme import (
     PALETTE,
@@ -54,7 +57,7 @@ SEVERITY_COLORS = {
 }
 SEVERITY_ORDER = ["Critical", "High", "Medium", "Low"]
 CONFIDENCE_ORDER = ["low", "nominal", "high", "unknown"]
-# Sidebar pages and their Material icons (Streamlit-native `:material/…:` icons).
+# Sidebar pages use Streamlit Material icons.
 PAGE_OVERVIEW = "Overview"
 PAGE_MAP = "Fire Detection Map"
 PAGE_ANALYTICS = "Analytics & Insights"
@@ -65,11 +68,11 @@ NAV_ITEMS = {
     PAGE_OVERVIEW: ":material/space_dashboard:",
     PAGE_MAP: ":material/map:",
     PAGE_ANALYTICS: ":material/insights:",
-    PAGE_ALERTS: ":material/local_fire_department:",
+    PAGE_ALERTS: ":material/campaign:",   # megaphone, matches the top-bar notification
     PAGE_DATA: ":material/table_view:",
     PAGE_SETTINGS: ":material/tune:",
 }
-# Old page names (kept in a browser session) -> where that content lives now.
+# Map legacy page names to their current sections.
 LEGACY_PAGES = {
     "Historical Analysis": PAGE_ANALYTICS,
     "Alert Management": PAGE_ALERTS,
@@ -86,6 +89,11 @@ def go_to(page: str) -> None:
 def load_data(max_km: float, max_hours: float, files: tuple):
     raw = load_raw_hotspots()
     return harmonize(raw, max_km=max_km, max_hours=max_hours)
+
+
+@st.cache_data(show_spinner="Reading model training observations…")
+def load_training_data(files: tuple):
+    return load_training_hotspots()
 
 
 @st.cache_data(show_spinner="Reading Ghana administrative boundaries…")
@@ -145,13 +153,22 @@ def render_fire_map(
         return
 
     center_lat, center_lon = geometry.centroid.y, geometry.centroid.x
+    # Keep map panning and zoom within Ghana and its nearby margins.
+    west, south, east, north = AREAS["Ghana"]
+    margin = 0.75
     fire_map = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=7,
+        max_bounds=True,
+        min_lat=south - margin, max_lat=north + margin,
+        min_lon=west - margin, max_lon=east + margin,
+        max_bounds_viscosity=1.0,   # "solid wall" at the edge instead of a rubber band
         tiles=None,
         control_scale=True,
         prefer_canvas=True,
     )
+    # Set Leaflet zoom limits directly because Folium omits them without tiles.
+    fire_map.options.update({"minZoom": 6, "maxZoom": 18})
     tile_layers = {
         # CARTO's dark tiles now need an API key (they show "API KEY REQUIRED"),
         # so the dark style uses Esri's free dark grey canvas instead.
@@ -482,33 +499,35 @@ def render_overview(
             st.markdown('<div class="pc-panel pc-muted">No alert signals match this period.</div>',
                         unsafe_allow_html=True)
             return
+        # Render compact alert boxes in the shared grid.
+        boxes = []
         for _, alert in alert_rows.head(4).iterrows():
             severity = alert["Severity"]
             color = SEVERITY_COLORS[severity]
-            st.markdown(
-                f"""
-                <div class="pc-alert-row" style="--alert-color:{color}">
-                  <div class="pc-alert-title">{escape(severity)} · {escape(alert['Alert'].split(' — ')[0])}</div>
-                  <div class="pc-alert-copy">{escape(alert['Location'])} · {escape(alert['Detection time'])}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+            boxes.append(
+                f'<div class="pc-alert-row pc-alert-compact" style="--alert-color:{color}">'
+                f'<div class="pc-alert-title">{escape(severity)} · '
+                f'{escape(alert["Alert"].split(" — ")[0])}</div>'
+                f'<div class="pc-alert-copy">{escape(alert["Location"])} · '
+                f'{escape(alert["Detection time"])}</div></div>'
             )
-        # Switch page in a callback so the sidebar highlight updates on the same click.
-        st.button(
-            f"Open {PAGE_ALERTS} →",
-            key="overview_open_alerts",
-            help="Search, filter and update alert status for this session.",
-            on_click=go_to,
-            args=(PAGE_ALERTS,),
-        )
+        st.markdown(f'<div class="pc-signal-grid">{"".join(boxes)}</div>',
+                    unsafe_allow_html=True)
 
     section_heading("Geospatial fire activity", "Clustered detections · severity-colored markers")
     left, right = st.columns([1.62, 1], gap="medium")
     with left:
-        # Priority signals sit under the map, just above the severity legend.
-        render_fire_map(raw, groups, geometry, height=500, key="overview_fire_map",
-                        before_legend=priority_signals)
+        render_fire_map(raw, groups, geometry, height=500, key="overview_fire_map")
+        # Keep the alerts link directly below the map legend.
+        with st.container(horizontal_alignment="right"):
+            # Update navigation state before rerunning the page.
+            st.button(
+                f"Open {PAGE_ALERTS} →",
+                key="overview_open_alerts",
+                help="Search, filter and update alert status for this session.",
+                on_click=go_to,
+                args=(PAGE_ALERTS,),
+            )
     with right:
         section_heading("Detection trend", "Daily observations in selected period")
         if daily.empty:
@@ -539,6 +558,87 @@ def render_overview(
                 margin={"l": 8, "r": 8, "t": 12, "b": 5},
             )
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        # Show priority alerts below the trend chart.
+        priority_signals()
+
+
+def render_prediction_model(top_of_page: bool = False) -> None:
+    """Generate next-day hotspot predictions from the separate training dataset."""
+    if not top_of_page:
+        st.divider()
+    section_heading(
+        "Next-Day Hotspot Forecast",
+        "Predicted likelihood by grid cell for the day after the latest available observations.",
+    )
+    try:
+        training_raw = load_training_data(training_fingerprint())
+    except (
+        ValueError,
+        pd.errors.EmptyDataError,
+        pd.errors.ParserError,
+        UnicodeDecodeError,
+    ) as err:
+        st.error(f"Could not load the model training CSVs: {err}")
+        return
+
+    if training_raw.empty:
+        st.info(
+            "Predictions are unavailable. Add FIRMS archive CSVs to "
+            "`data/training/modis/` or `data/training/viirs/`."
+        )
+        return
+
+    date_count = training_raw["date"].nunique()
+    if date_count < 10:
+        st.info("Predictions require at least 10 distinct observation dates.")
+        return
+
+    if st.button(
+        "Generate next-day predictions",
+        type="primary",
+        key="train_hotspot_model",
+    ):
+        try:
+            cell_days = make_cell_days(training_raw)
+            model, _, _ = train_and_evaluate(cell_days)
+            latest_day = cell_days["date"].max()
+            forecasts = predict_next_day(model, cell_days, latest_day)
+        except ValueError as err:
+            st.error(f"Model training could not be completed: {err}")
+        else:
+            st.session_state["hotspot_model_result"] = {
+                "fingerprint": training_fingerprint(),
+                "forecasts": forecasts,
+            }
+
+    result = st.session_state.get("hotspot_model_result")
+    if not result or result["fingerprint"] != training_fingerprint():
+        return
+
+    forecasts = result["forecasts"]
+    if forecasts.empty:
+        st.info("No hotspot predictions are available for the latest observation date.")
+    else:
+        forecast_for = forecasts["forecast_for"].iloc[0]
+        section_heading(
+            f"Highest-risk grid cells · {forecast_for}",
+            "Estimated likelihood of a detected hotspot",
+        )
+        display = forecasts[
+            ["cell_lat", "cell_lon", "probability"]
+        ].head(20).rename(columns={
+            "cell_lat": "Grid latitude",
+            "cell_lon": "Grid longitude",
+            "probability": "Predicted probability",
+        })
+        display["Predicted probability"] = display["Predicted probability"].map(
+            "{:.1%}".format
+        )
+        st.dataframe(display, width="stretch", hide_index=True)
+    st.caption(
+        "Predictions are estimates based on historical hotspot patterns, not confirmed fires "
+        "or official warnings. Weather, vegetation, and land cover are not included."
+    )
 
 
 def render_analytics(
@@ -731,8 +831,7 @@ def render_history(
         {"Region": name, "Detections": int(aoi.inside(raw, shape).sum())}
         for name, shape in zip(region_names, region_shapes)
     ]).sort_values("Detections", ascending=False)
-    # White panel (styled via .st-key-regional_panel in dashboard_theme.py).
-    # st.table is plain HTML, so CSS can colour it; st.dataframe can't be.
+    # Use a styled HTML table for regional totals.
     with st.container(key="regional_panel"):
         section_heading("Regional fire patterns", "Detection totals by Ghana administrative region")
         regional["Detections"] = regional["Detections"].map("{:,}".format)
@@ -862,7 +961,7 @@ def main() -> None:
     st.session_state["dashboard_page"] = page
 
     with st.sidebar:
-        # Compact navigation block (styled via .st-key-sidebar_nav in dashboard_theme.py).
+        # Keep sidebar navigation inside its styled container.
         with st.container(key="sidebar_nav"):
             st.markdown(
                 '<div class="pc-nav-brand">PyroChronos<span>Ghana wildfire intelligence</span>'
@@ -1000,7 +1099,9 @@ def main() -> None:
     alert_table = make_alert_table(
         alert_signals, filtered_raw, filtered_groups, region_shapes, region_names, high_threshold
     )
-    render_topbar(sync_label, connected, int(len(alert_table)))
+    # The notification button opens Emberwatch Alerts.
+    render_topbar(sync_label, connected, int(len(alert_table)),
+                  on_alerts_click=lambda: go_to(PAGE_ALERTS))
 
     if raw_all.empty:
         render_hero(
@@ -1009,6 +1110,8 @@ def main() -> None:
         )
         st.info("No FIRMS detections are loaded. Add source data in Data Explorer to begin.")
         render_data_manager()
+        if page == PAGE_ALERTS:  # prediction uses data/training, not the display data
+            render_prediction_model()
         return
 
     if filtered_raw["source_file"].str.startswith(DEMO_PREFIX).any():
@@ -1026,6 +1129,8 @@ def main() -> None:
         st.info("The selected filters returned no observations.")
         if page == PAGE_DATA:
             render_data_manager()
+        elif page == PAGE_ALERTS:  # prediction uses data/training, not the filters
+            render_prediction_model()
         return
 
     period_label = f"{start_date:%d %b} – {end_date:%d %b %Y}"
@@ -1040,11 +1145,10 @@ def main() -> None:
             "Explore clustered MODIS/VIIRS detections across selected basemaps.",
             f"Geospatial intelligence · {region}",
         )
-        # Map detail on the left, a narrow Basemap picker pushed to the right edge.
+        # Place map details on the left and basemap selection on the right.
         detail_col, _, basemap_col = st.columns([3, 2, 1.2], vertical_alignment="bottom")
         with detail_col:
-            # A radio (styled in dashboard_theme.py) stays readable in every
-            # state; Streamlit's segmented control kept dark-on-dark text here.
+            # Use radio buttons for readable map-detail choices.
             map_view = st.radio(
                 "Map detail",
                 ["Individual detections", "Harmonized incidents"],
@@ -1074,9 +1178,14 @@ def main() -> None:
     elif page == PAGE_ALERTS:
         section_page(
             PAGE_ALERTS,
-            "Search and triage transparent rule-based signals derived from observed FIRMS detections.",
-            "Response queue · session-only status",
+            "Next-day hotspot prediction, then search and triage rule-based signals derived "
+            "from observed FIRMS detections.",
+            "Hotspot prediction · response queue",
         )
+        # Show predictions first because the notification links to this section.
+        render_prediction_model(top_of_page=True)
+        st.divider()
+        section_heading("Rule-based alerts", "Signals derived from observed FIRMS detections")
         render_alerts(
             daily, filtered_raw, filtered_groups, region_shapes, region_names,
             spike_sigma, high_threshold, alert_severities,

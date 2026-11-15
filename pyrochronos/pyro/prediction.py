@@ -1,17 +1,3 @@
-"""
-Step 3 (experimental): a very simple "will this grid cell have a detection
-tomorrow?" model.
-
-Analogy: the map is cut into squares like a chessboard. For each square and
-each day we ask "how busy was this square yesterday, over the last 3 days,
-over the last week?" and learn how those answers relate to "was it busy the
-next day?". It is like a weather forecaster who mostly says "tomorrow will be
-like today" — and we check whether the model actually beats that simple rule.
-
-This is a learning exercise, NOT an operational fire forecast. It ignores
-weather, vegetation, land use and human activity.
-"""
-
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
@@ -56,7 +42,7 @@ def make_cell_days(raw: pd.DataFrame, cell_deg: float = 0.25) -> pd.DataFrame:
         rows.append(frame)
 
     cd = pd.concat(rows, ignore_index=True)
-    doy = cd["date"].dt.dayofyear
+    doy = cd["date"].dt.day_of_year
     cd["doy_sin"] = np.sin(2 * np.pi * doy / 365.25)
     cd["doy_cos"] = np.cos(2 * np.pi * doy / 365.25)
     lat_lon = cd["cell"].str.split("_", expand=True).astype(float)
@@ -79,6 +65,8 @@ def train_and_evaluate(cd: pd.DataFrame, train_fraction: float = 0.7, threshold:
     """
     Time-based split: learn on earlier days, test on later days
     (never shuffle time series — that would let the model peek at the future).
+    Metrics come from the held-out period; the returned model is then refit on
+    all labelled dates for next-day predictions.
     """
     labelled = cd.dropna(subset=["target"])
     days = np.sort(labelled["date"].unique())
@@ -88,10 +76,10 @@ def train_and_evaluate(cd: pd.DataFrame, train_fraction: float = 0.7, threshold:
     train = labelled[labelled["date"] < cutoff]
     test = labelled[labelled["date"] >= cutoff]
 
-    model = LogisticRegression(max_iter=1000, class_weight="balanced")
-    model.fit(train[FEATURES], train["target"].astype(int))
+    evaluation_model = LogisticRegression(max_iter=1000, class_weight="balanced")
+    evaluation_model.fit(train[FEATURES], train["target"].astype(int))
 
-    prob = model.predict_proba(test[FEATURES])[:, 1]
+    prob = evaluation_model.predict_proba(test[FEATURES])[:, 1]
     y = test["target"].astype(int)
     metrics = pd.DataFrame({
         "Model (logistic regression)": _scores(y, (prob >= threshold).astype(int), prob),
@@ -100,6 +88,8 @@ def train_and_evaluate(cd: pd.DataFrame, train_fraction: float = 0.7, threshold:
 
     info = {"cutoff": pd.Timestamp(cutoff).date(), "n_train": len(train), "n_test": len(test),
             "positive_rate_test": float(y.mean())}
+    model = LogisticRegression(max_iter=1000, class_weight="balanced")
+    model.fit(labelled[FEATURES], labelled["target"].astype(int))
     return model, metrics, info
 
 

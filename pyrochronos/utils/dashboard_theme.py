@@ -46,8 +46,7 @@ def inject_theme() -> None:
         [data-testid="stSidebar"] {
           background: #0B1424; border-right: 1px solid rgba(148,163,184,.12);
         }
-        /* Pull the navigation up: shrink Streamlit's 3.75rem sidebar header strip
-           (it only holds the collapse button) and drop the extra top padding. */
+        /* Reduce the sidebar header height and top padding. */
         [data-testid="stSidebarHeader"] {
           height:2.25rem !important; min-height:2.25rem !important;
           padding-top:.4rem !important; padding-bottom:0 !important; margin-bottom:0 !important;
@@ -56,7 +55,6 @@ def inject_theme() -> None:
         [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
           color: #94A3B8;
         }
-        /* ---- Sidebar navigation (container key "sidebar_nav") ---- */
         .st-key-sidebar_nav { gap:.3rem; }
         .pc-nav-brand { color:#F1F5F9; font-weight:760; font-size:1.05rem;
           letter-spacing:-.02em; padding:0 .2rem .6rem; line-height:1.25; }
@@ -64,8 +62,7 @@ def inject_theme() -> None:
           letter-spacing:.02em; margin-top:.15rem; }
         .pc-nav-label { color:#64748B; font-size:.66rem; font-weight:700; letter-spacing:.16em;
           padding:0 .2rem; margin-bottom:1.15rem; }
-        /* Streamlit pulls the element after a text block up by ~1rem; cancel that here
-           so the first button doesn't slide over the NAVIGATION label. */
+        /* Keep the first navigation button below its label. */
         .st-key-sidebar_nav [data-testid="stElementContainer"]:has(.pc-nav-label) {
           margin-bottom:0 !important;
         }
@@ -78,7 +75,7 @@ def inject_theme() -> None:
         .st-key-sidebar_nav button > div {
           justify-content:flex-start; gap:.65rem; width:100%; min-width:0;
         }
-        /* One line per item: no wrapping ("Fire Detection / Map"); ellipsis if very narrow. */
+        /* Keep navigation labels on one line and truncate narrow layouts. */
         .st-key-sidebar_nav button [data-testid="stMarkdownContainer"] { min-width:0; }
         .st-key-sidebar_nav button p {
           font-size:.86rem; font-weight:600; text-align:left;
@@ -90,7 +87,7 @@ def inject_theme() -> None:
           background:rgba(148,163,184,.08) !important; border-color:rgba(148,163,184,.14) !important;
         }
         .st-key-sidebar_nav button:hover * { color:#F1F5F9 !important; }
-        /* Active page: orange tint, orange left bar, white label, orange icon */
+        /* Highlight the active page with the orange accent. */
         .st-key-sidebar_nav [data-testid="stBaseButton-primary"] {
           background:linear-gradient(90deg,rgba(255,107,53,.22),rgba(255,107,53,.06)) !important;
           border-color:rgba(255,107,53,.45) !important;
@@ -177,11 +174,38 @@ def inject_theme() -> None:
         h1, h2, h3 { letter-spacing: -.025em; }
         h2 { font-size: 1.18rem; }
         h3 { font-size: 1rem; }
-        /* Top bar: six separate bordered items that slide in one after another,
-           left to right, starting from "PyroChronos". --i sets each item's turn. */
-        .pc-topbar {
-          display:flex; flex-wrap:wrap; align-items:stretch; gap:.6rem;
-          margin:.1rem 0 1.3rem;
+        /* Animate top-bar items in sequence. */
+        .st-key-pc_topbar { flex-wrap:wrap; gap:.6rem !important; margin:.1rem 0 1.3rem; }
+        /* "FIRMS DATA CONNECTED" and everything after it sit on the right. */
+        .st-key-pc_topbar [data-testid="stElementContainer"]:has(.pc-push) { margin-left:auto; }
+        /* Every top-bar box (and the megaphone button) is exactly 50px tall so the row lines up. */
+        .st-key-pc_topbar .pc-item { height:50px; box-sizing:border-box; padding-top:0; padding-bottom:0; }
+        /* Align top-bar boxes and the notification button. */
+        .st-key-pc_topbar [data-testid="stMarkdownContainer"] { margin-bottom:0 !important; }
+        /* Megaphone notification button: same box style + slide-in turn (5th). */
+        .st-key-topbar_alerts button {
+          height:50px; min-height:50px; box-sizing:border-box;
+          padding:0 .8rem 0 2.75rem !important;
+          border:1px solid rgba(148,163,184,.22) !important; border-radius:11px !important;
+          background:
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFB547' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8.2 9.3H5.1A1.6 1.6 0 0 0 3.5 10.9v2.2a1.6 1.6 0 0 0 1.6 1.6h3.1z'/%3E%3Cpath d='M8.2 9.3l6.3-3a1.1 1.1 0 0 1 1.6 1v9.4a1.1 1.1 0 0 1-1.6 1l-6.3-3'/%3E%3Cpath d='M5.3 14.7v2.6a1 1 0 0 0 2 0v-2.6'/%3E%3Cpath d='M18.4 8.4l2-.8M18.9 12h2.1M18.4 15.6l2 1.1'/%3E%3C/svg%3E")
+              no-repeat .7rem center / 27px 27px,
+            linear-gradient(110deg,rgba(21,31,48,.96),rgba(14,22,36,.94)) !important;
+          box-shadow:0 8px 20px rgba(0,0,0,.16);
+          opacity:0; animation:pc-slide-in .55s cubic-bezier(.2,.7,.2,1) forwards;
+          animation-delay:.56s;
+          transition:border-color .18s ease, transform .18s ease;
+        }
+        .st-key-topbar_alerts button:hover {
+          border-color:rgba(255,107,53,.6) !important; transform:translateY(-1px);
+        }
+        .st-key-topbar_alerts button p {   /* the count, as a red badge */
+          display:grid; place-items:center; min-width:20px; height:20px; padding:0 6px;
+          border-radius:10px; background:#FF4545; color:#fff !important;
+          font-size:.68rem; font-weight:700; line-height:1;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .st-key-topbar_alerts button { animation:none; opacity:1; }
         }
         .pc-item {
           display:flex; align-items:center; gap:.5rem; padding:.55rem .9rem;
@@ -200,7 +224,7 @@ def inject_theme() -> None:
         @media (prefers-reduced-motion: reduce) {
           .pc-item { animation:none; opacity:1; }
         }
-        .pc-push { margin-left:auto; }  /* status and everything after it sit on the right */
+        .pc-push { margin-left:auto; }  /* Align status and following items to the right. */
         .pc-brand-name { color:#F1F5F9; font-weight:750; font-size:1.03rem; }
         .pc-brand-sub { color:#94A3B8; font-size:.72rem; letter-spacing:.04em; }
         .pc-sync { flex-direction:column; align-items:flex-end; justify-content:center; gap:0;
@@ -253,6 +277,17 @@ def inject_theme() -> None:
         .pc-alert-row { padding:.76rem .85rem; margin:.48rem 0; border:1px solid var(--pc-border);
           border-left:3px solid var(--alert-color); border-radius:9px;
           background:rgba(21,31,48,.68); }
+        /* Match compact alert boxes to the button width. */
+        .pc-alert-row.pc-alert-compact { padding:.45rem .7rem; margin:0 0 .4rem; border-radius:8px; }
+        /* Two signal boxes per row; equal heights within a row; one per row on phones. */
+        .pc-signal-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; }
+        .pc-signal-grid .pc-alert-row.pc-alert-compact { margin:0; }
+        @media (max-width:640px) { .pc-signal-grid { grid-template-columns:1fr; } }
+        .pc-alert-compact .pc-alert-title { font-size:.76rem; }
+        .pc-alert-compact .pc-alert-copy { font-size:.68rem; margin-top:.12rem; line-height:1.35; }
+        .st-key-priority_signals [data-testid="stElementContainer"]:has(.pc-alert-compact) {
+          margin-bottom:0 !important;
+        }
         .pc-alert-title { color:#F1F5F9; font-size:.8rem; font-weight:650; }
         .pc-alert-copy { color:#94A3B8; font-size:.73rem; margin-top:.22rem; }
         .pc-muted { color:#94A3B8; font-size:.78rem; }
@@ -275,29 +310,35 @@ def inject_theme() -> None:
     )
 
 
-def render_topbar(sync_label: str, connected: bool, alert_count: int) -> None:
+def render_topbar(sync_label: str, connected: bool, alert_count: int,
+                  on_alerts_click=None) -> None:
+    """Top bar built from Streamlit elements so the megaphone notification is a real
+    button: clicking it runs `on_alerts_click` (opens Emberwatch Alerts) without a page
+    reload, so session state such as alert statuses and filters is kept."""
     status_class = "" if connected else "offline"
     status_text = "FIRMS DATA CONNECTED" if connected else "NO DATA FEED"
-    st.markdown(
-        f"""
-        <div class="pc-topbar">
-          <div class="pc-item" style="--i:0"><span class="pc-brand-name">PyroChronos</span></div>
-          <div class="pc-item pc-brand-sub" style="--i:1">EARTH OBSERVATION · WILDFIRE INTELLIGENCE</div>
-          <div class="pc-item pc-status pc-push" style="--i:2">
-            <span class="pc-dot {status_class}"></span>{status_text}</div>
-          <div class="pc-item pc-sync" style="--i:3">
-            <strong>Last file sync</strong><span>{escape(sync_label)}</span></div>
-          <div class="pc-item pc-notifications" style="--i:4"
-               aria-label="{alert_count} rule-based alert signals">
-            <span aria-hidden="true">🔔</span>
-            <span class="pc-notification-count">{alert_count}</span>
-          </div>
-          <div class="pc-item pc-profile" style="--i:5"><span class="pc-avatar">GH</span>
-            <span>Ghana Operations</span></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+
+    def item(html: str) -> None:
+        st.markdown(html, unsafe_allow_html=True, width="content")
+
+    with st.container(key="pc_topbar", horizontal=True, gap="small",
+                      vertical_alignment="center"):
+        item('<div class="pc-item" style="--i:0"><span class="pc-brand-name">PyroChronos</span></div>')
+        item('<div class="pc-item pc-brand-sub" style="--i:1">'
+             'EARTH OBSERVATION · WILDFIRE INTELLIGENCE</div>')
+        item(f'<div class="pc-item pc-status pc-push" style="--i:2">'
+             f'<span class="pc-dot {status_class}"></span>{status_text}</div>')
+        item(f'<div class="pc-item pc-sync" style="--i:3"><strong>Last file sync</strong>'
+             f'<span>{escape(sync_label)}</span></div>')
+        # Megaphone notification button (icon + red count badge are pure CSS).
+        st.button(
+            str(alert_count),
+            key="topbar_alerts",
+            help=f"{alert_count} rule-based alert signals · open Emberwatch Alerts",
+            on_click=on_alerts_click,
+        )
+        item('<div class="pc-item pc-profile" style="--i:5"><span class="pc-avatar">GH</span>'
+             '<span>Ghana Operations</span></div>')
 
 
 def render_hero(title: str, subtitle: str, eyebrow: str = "Operational picture") -> None:

@@ -59,7 +59,6 @@ def render_data_manager():
 
     st.divider()
 
-    # ------------------------------------------------------------------ upload
     st.subheader("Option 1 · Upload FIRMS CSV files")
     st.caption("From firms.modaps.eosdis.nasa.gov → *Archive Download* (good for whole "
                "seasons). Unzip and upload the CSVs here. MODIS vs VIIRS is detected "
@@ -88,7 +87,6 @@ def render_data_manager():
 
     st.divider()
 
-    # --------------------------------------------------------------- API fetch
     st.subheader("Option 2 · Fetch from the FIRMS API")
     saved_key = _get_saved_key()
     if saved_key:

@@ -1,13 +1,3 @@
-"""
-Step 1 of the pipeline: read FIRMS CSVs, clean them, and harmonize them.
-
-Analogy: think of MODIS and VIIRS as two witnesses describing the same events.
-They use different words ("confidence 85" vs "confidence h") and one has
-sharper eyesight (VIIRS pixels are ~375 m, MODIS ~1 km). This module
-  1) writes down every witness statement as-is   -> raw_hotspots
-  2) groups statements that probably describe the same thing -> harmonized
-"""
-
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +5,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW_DIR = ROOT / "data" / "raw"
+TRAINING_DIR = ROOT / "data" / "training"
 PROCESSED_DIR = ROOT / "data" / "processed"
 DEMO_BACKUP_DIR = ROOT / "data" / "demo_backup"
 DEMO_PREFIX = "DEMO_SYNTHETIC"
@@ -29,9 +20,6 @@ COLUMN_ALIASES = {
 }
 
 
-# ----------------------------------------------------------------------------
-# Reading
-# ----------------------------------------------------------------------------
 def read_folder(folder: Path, sensor: str) -> pd.DataFrame:
     """Read every CSV in one folder and tag rows with the sensor name."""
     frames = []
@@ -76,16 +64,36 @@ def list_raw_files() -> pd.DataFrame:
     for sensor in ("modis", "viirs"):
         for p in sorted((RAW_DIR / sensor).glob("*.csv")):
             rows.append({"folder": sensor, "file": p.name,
-                         "size_kb": round(p.stat().st_size / 1024, 1),
-                         "demo": p.name.startswith(DEMO_PREFIX),
-                         "modified": p.stat().st_mtime})
+                        "size_kb": round(p.stat().st_size / 1024, 1),
+                        "demo": p.name.startswith(DEMO_PREFIX),
+                        "modified": p.stat().st_mtime})
     return pd.DataFrame(rows, columns=["folder", "file", "size_kb", "demo", "modified"])
+
+
+def list_training_files() -> pd.DataFrame:
+    """Every CSV in data/training, kept separate from dashboard source files."""
+    rows = []
+    for sensor in ("modis", "viirs"):
+        for path in sorted((TRAINING_DIR / sensor).glob("*.csv")):
+            rows.append({
+                "folder": sensor,
+                "file": path.name,
+                "size_kb": round(path.stat().st_size / 1024, 1),
+                "modified": path.stat().st_mtime,
+            })
+    return pd.DataFrame(rows, columns=["folder", "file", "size_kb", "modified"])
 
 
 def data_fingerprint() -> tuple:
     """Changes whenever a raw CSV is added, removed or edited (used as a cache key)."""
     files = list_raw_files()
     return tuple(zip(files["file"], files["modified"]))
+
+
+def training_fingerprint() -> tuple:
+    """Changes whenever a training CSV is added, removed or edited."""
+    files = list_training_files()
+    return tuple(zip(files["folder"], files["file"], files["size_kb"], files["modified"]))
 
 
 def move_demo_files(to_backup: bool = True) -> int:
@@ -157,7 +165,7 @@ def load_raw_hotspots() -> pd.DataFrame:
     # The same detection can appear twice (e.g. overlapping downloads, or NRT
     # and SP versions of the same day). Keep one copy.
     key = [c for c in ("latitude", "longitude", "acq_date", "acq_time", "satellite")
-           if c in df.columns]
+        if c in df.columns]
     df = df.drop_duplicates(subset=key)
 
     before = len(df)
@@ -169,9 +177,41 @@ def load_raw_hotspots() -> pd.DataFrame:
     return df
 
 
-# ----------------------------------------------------------------------------
-# Harmonizing
-# ----------------------------------------------------------------------------
+def load_training_hotspots() -> pd.DataFrame:
+    """Load FIRMS-format training CSVs without reading dashboard data in data/raw."""
+    modis = read_folder(TRAINING_DIR / "modis", "MODIS")
+    viirs = read_folder(TRAINING_DIR / "viirs", "VIIRS")
+    df = pd.concat([modis, viirs], ignore_index=True)
+    if df.empty:
+        return df
+
+    required = {"latitude", "longitude", "acq_date"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            "Training CSV files are missing required FIRMS columns: "
+            f"{', '.join(sorted(missing))}"
+        )
+
+    df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
+    df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
+    df["date"] = pd.to_datetime(df["acq_date"], errors="coerce").dt.normalize()
+    before = len(df)
+    df = df.dropna(subset=["latitude", "longitude", "date"])
+    valid_coordinates = (
+        df["latitude"].between(-90, 90) & df["longitude"].between(-180, 180)
+    )
+    df = df[valid_coordinates].copy()
+    if len(df) < before:
+        print(
+            f"Warning: dropped {before - len(df)} training rows with invalid "
+            "coordinates or dates."
+        )
+    if df.empty:
+        raise ValueError("Training CSV files contain no valid FIRMS observations.")
+    return df.reset_index(drop=True)
+
+
 def haversine_km(lat1, lon1, lat2, lon2):
     """Distance between points on Earth in kilometres (works with arrays)."""
     lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
@@ -205,10 +245,8 @@ def harmonize(raw: pd.DataFrame, max_km: float = 2.0, max_hours: float = 24.0):
     g_lat, g_lon, g_time = np.empty(n), np.empty(n), np.empty(n, dtype=np.int64)
     n_groups = 0
 
-    # Speed-up: a grid of buckets, like sorting letters into postcode pigeonholes.
-    # A cell is at least `max_km` wide, so any group within reach sits in the
-    # 3x3 block of cells around the point; we only check those groups instead
-    # of every group ever made. Results are identical to checking them all.
+    # Bucket nearby groups so each detection checks only its local 3x3 grid.
+    # This preserves the full-search result while reducing comparisons.
     km_per_deg = 6371.0 * np.pi / 180
     cos_min = max(np.cos(np.radians(np.abs(lats).max())), 0.01)
     cell_lat = max_km / km_per_deg * 1.001
