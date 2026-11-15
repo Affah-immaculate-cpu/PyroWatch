@@ -137,7 +137,9 @@ def render_fire_map(
     basemap: str = "Dark intelligence",
     show_heatmap: bool = True,
     key: str = "fire_map",
+    before_legend=None,
 ) -> None:
+    """`before_legend`: optional function drawn between the map and its severity legend."""
     if detections.empty:
         st.info("No detections match the selected filters and date range.")
         return
@@ -282,6 +284,8 @@ def render_fire_map(
     )
     if len(detections_layer) > max_markers:
         st.caption(f"Showing {max_markers:,} of {len(detections_layer):,} mapped records.")
+    if before_legend is not None:
+        before_legend()
     render_map_legend()
     st.caption(
         "FRP severity is a display classification, not a fire-behavior forecast. "
@@ -472,10 +476,39 @@ def render_overview(
          "detail": last_seen.strftime("%Y · %H:%M UTC"), "accent": "#22C55E"},
     ])
 
+    def priority_signals() -> None:
+        section_heading("Priority signals", "Derived from active alert rules")
+        if alert_rows.empty:
+            st.markdown('<div class="pc-panel pc-muted">No alert signals match this period.</div>',
+                        unsafe_allow_html=True)
+            return
+        for _, alert in alert_rows.head(4).iterrows():
+            severity = alert["Severity"]
+            color = SEVERITY_COLORS[severity]
+            st.markdown(
+                f"""
+                <div class="pc-alert-row" style="--alert-color:{color}">
+                  <div class="pc-alert-title">{escape(severity)} · {escape(alert['Alert'].split(' — ')[0])}</div>
+                  <div class="pc-alert-copy">{escape(alert['Location'])} · {escape(alert['Detection time'])}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        # Switch page in a callback so the sidebar highlight updates on the same click.
+        st.button(
+            f"Open {PAGE_ALERTS} →",
+            key="overview_open_alerts",
+            help="Search, filter and update alert status for this session.",
+            on_click=go_to,
+            args=(PAGE_ALERTS,),
+        )
+
     section_heading("Geospatial fire activity", "Clustered detections · severity-colored markers")
     left, right = st.columns([1.62, 1], gap="medium")
     with left:
-        render_fire_map(raw, groups, geometry, height=500, key="overview_fire_map")
+        # Priority signals sit under the map, just above the severity legend.
+        render_fire_map(raw, groups, geometry, height=500, key="overview_fire_map",
+                        before_legend=priority_signals)
     with right:
         section_heading("Detection trend", "Daily observations in selected period")
         if daily.empty:
@@ -506,32 +539,6 @@ def render_overview(
                 margin={"l": 8, "r": 8, "t": 12, "b": 5},
             )
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-        section_heading("Priority signals", "Derived from active alert rules")
-        if alert_rows.empty:
-            st.markdown('<div class="pc-panel pc-muted">No alert signals match this period.</div>',
-                        unsafe_allow_html=True)
-        else:
-            for _, alert in alert_rows.head(4).iterrows():
-                severity = alert["Severity"]
-                color = SEVERITY_COLORS[severity]
-                st.markdown(
-                    f"""
-                    <div class="pc-alert-row" style="--alert-color:{color}">
-                      <div class="pc-alert-title">{escape(severity)} · {escape(alert['Alert'].split(' — ')[0])}</div>
-                      <div class="pc-alert-copy">{escape(alert['Location'])} · {escape(alert['Detection time'])}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-            # Switch page in a callback so the sidebar highlight updates on the same click.
-            st.button(
-                f"Open {PAGE_ALERTS} →",
-                key="overview_open_alerts",
-                help="Search, filter and update alert status for this session.",
-                on_click=go_to,
-                args=(PAGE_ALERTS,),
-            )
 
 
 def render_analytics(
