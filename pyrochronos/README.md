@@ -86,6 +86,19 @@ sensor folder, open **Alert Management**, and select **Generate next-day
 predictions**. At least 10 distinct observation dates are required. The
 interface displays the prediction results, not the training records.
 
+To train and save a reusable model artifact, run this command from the
+`pyrochronos` project folder:
+
+```powershell
+python scripts/train_hotspot_model.py
+```
+
+It saves the fitted estimator, feature settings, training date, and held-out
+evaluation metrics to `models/hotspot_model.joblib`. Rerun the command after
+adding newer training CSVs to refresh the saved model. The dashboard's prediction
+button still trains from the current training CSVs for its session; it does not
+load the saved artifact automatically.
+
 The data manager also supports uploading FIRMS CSV files and fetching observations
 through the FIRMS API. To enable API access, copy
 `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and set your own key:
@@ -109,7 +122,8 @@ pyro/                     Processing, Ghana boundaries, alerts, FIRMS API, model
 data/raw/                 Source FIRMS CSV files (MODIS and VIIRS)
 data/training/            Separate FIRMS CSVs used to generate predictions
 data/processed/           Optional processed-data exports
-scripts/                  Data fetch, demo generation, and processing utilities
+models/                   Saved model artifacts
+scripts/                  Data fetch, model training, demo generation, and processing
 ml/ models/ pages/        Extension points for project modules and pages
 ```
 

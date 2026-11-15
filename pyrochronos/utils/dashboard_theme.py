@@ -310,6 +310,49 @@ def inject_theme() -> None:
     )
 
 
+_FLAME_FAVICON_JS = """
+<script>
+(() => {
+  // One animation per browser tab, even though Streamlit reruns this script.
+  if (window.__pcFlame) return;
+  const flame = (t) => {
+    const sway = 3.2 * Math.sin(t * 2.3) + 1.4 * Math.sin(t * 5.7);
+    const lift = 2.5 + 2.5 * Math.sin(t * 3.1) + 1.2 * Math.sin(t * 7.9);
+    const shape = (tx, ty, cy, r, l, b, fill) =>
+      `<path fill="${fill}" d="M${tx} ${ty} C${tx + r * .3} ${cy} ${32 + r} ${cy + 10} ${32 + r - 1} ${b - 18}`
+      + ` C${32 + r - 2} ${b - 5} ${32 + l} ${b} 32 ${b} C${32 - l} ${b} ${32 - r + 2} ${b - 5} ${32 - r + 1} ${b - 18}`
+      + ` C${32 - r} ${cy + 4} ${tx - r * .4} ${cy} ${tx} ${ty}Z"/>`;
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+      + '<defs><linearGradient id="g" x1="0" y1="1" x2="0" y2="0">'
+      + '<stop offset="0" stop-color="#FF3D1F"/><stop offset="1" stop-color="#FF8A3D"/></linearGradient></defs>'
+      + shape(32 + sway, 2 + lift, 16, 20, 10, 62, 'url(#g)')
+      + shape(32 + sway * .75, 20 + lift * .8, 30, 13, 7, 60, '#FFB547')
+      + shape(32 + sway * .45, 35 + lift * .5, 42, 7, 4, 58, '#FFF1B8')
+      + '</svg>';
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
+  };
+  const start = performance.now();
+  window.__pcFlame = setInterval(() => {
+    const href = flame((performance.now() - start) / 1000);
+    let links = document.querySelectorAll('link[rel~="icon"]');
+    if (!links.length) {
+      const link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+      links = [link];
+    }
+    links.forEach((link) => { link.type = 'image/svg+xml'; link.href = href; });
+  }, 90);
+})();
+</script>
+"""
+
+
+def animate_favicon() -> None:
+    """Replace the static 🔥 tab icon with a continuously flickering SVG flame."""
+    st.html(_FLAME_FAVICON_JS, unsafe_allow_javascript=True)
+
+
 def render_topbar(sync_label: str, connected: bool, alert_count: int,
                   on_alerts_click=None) -> None:
     """Top bar built from Streamlit elements so the megaphone notification is a real
