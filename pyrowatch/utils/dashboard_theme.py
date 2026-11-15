@@ -203,10 +203,8 @@ def inject_theme() -> None:
         .st-key-topbar_alerts button:hover {
           border-color:rgba(255,107,53,.6) !important; transform:translateY(-1px);
         }
-        .st-key-topbar_alerts button p {   /* the count, as a red badge */
-          display:grid; place-items:center; min-width:20px; height:20px; padding:0 6px;
-          border-radius:10px; background:#FF4545; color:#fff !important;
-          font-size:.68rem; font-weight:700; line-height:1;
+        .st-key-topbar_alerts button p {
+          font-size:0; line-height:0;
         }
         @media (prefers-reduced-motion: reduce) {
           .st-key-topbar_alerts button { animation:none; opacity:1; }
@@ -380,8 +378,7 @@ def animate_favicon() -> None:
     )
 
 
-def render_topbar(sync_label: str, connected: bool, alert_count: int,
-                  on_alerts_click=None) -> None:
+def render_topbar(sync_label: str, connected: bool, on_alerts_click=None) -> None:
     """Top bar built from Streamlit elements so the megaphone notification is a real
     button: clicking it runs `on_alerts_click` (opens Emberwatch Alerts) without a page
     reload, so session state such as alert statuses and filters is kept."""
@@ -400,11 +397,11 @@ def render_topbar(sync_label: str, connected: bool, alert_count: int,
              f'<span class="pc-dot {status_class}"></span>{status_text}</div>')
         item(f'<div class="pc-item pc-sync" style="--i:3"><strong>Last file sync</strong>'
              f'<span>{escape(sync_label)}</span></div>')
-        # Megaphone notification button (icon + red count badge are pure CSS).
+        # The alert control is icon-only; its label remains available to assistive technology.
         st.button(
-            str(alert_count),
+            "Alerts",
             key="topbar_alerts",
-            help=f"{alert_count} rule-based alert signals · open Emberwatch Alerts",
+            help="Open Emberwatch Alerts",
             on_click=on_alerts_click,
         )
         item('<div class="pc-item pc-profile" style="--i:5"><span class="pc-avatar">GH</span>'

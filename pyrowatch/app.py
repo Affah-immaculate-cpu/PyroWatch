@@ -134,6 +134,14 @@ def add_aoi_outline(map_object, geometry) -> None:
 
 
 def render_map_legend() -> None:
+    st.caption(
+        "Orange numbered circles count the detections or incidents grouped there, "
+        "depending on Map detail. Zoom in to separate a cluster."
+    )
+    st.caption(
+        "Heatmap colors show detection density: blue means fewer nearby detections; "
+        "red means more. Marker colors show FRP-based severity:"
+    )
     items = "".join(
         f'<span class="pc-legend-item"><i class="pc-legend-dot" '
         f'style="--legend-color:{color}"></i>{label}</span>'
@@ -1255,8 +1263,11 @@ def main() -> None:
         alert_signals, filtered_raw, filtered_groups, region_shapes, region_names, high_threshold
     )
     # The notification button opens Emberwatch Alerts.
-    render_topbar(sync_label, connected, int(len(alert_table)),
-                  on_alerts_click=lambda: go_to(PAGE_ALERTS))
+    render_topbar(
+        sync_label,
+        connected,
+        on_alerts_click=lambda: go_to(PAGE_ALERTS),
+    )
 
     if raw_all.empty:
         render_hero(
